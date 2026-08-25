@@ -13,12 +13,14 @@
 #include <libcamera/base/span.h>
 #include <libcamera/base/utils.h>
 
+#include "libcamera/internal/sensor_cfa_layout.h"
+#include "libcamera/internal/v4l2_videodevice.h"
+
 #include "controller/camera_mode.h"
 #include "controller/controller.h"
 #include "controller/metadata.h"
-#include "md_parser.h"
 
-#include "libcamera/internal/v4l2_videodevice.h"
+#include "md_parser.h"
 
 namespace RPiController {
 
@@ -99,6 +101,7 @@ public:
 	virtual unsigned int mistrustFramesStartup() const;
 	virtual unsigned int mistrustFramesModeSwitch() const;
 	virtual unsigned int getMinDebinFactor() const;
+	void setCfaLayout(const libcamera::SensorCfaLayout &layout);
 
 protected:
 	void parseEmbeddedData(libcamera::Span<const uint8_t> buffer,
@@ -109,6 +112,7 @@ protected:
 	std::unique_ptr<MdParser> parser_;
 	CameraMode mode_;
 	Controller::HardwareConfig hwConfig_;
+	libcamera::SensorCfaLayout cfaLayout_{ { 1, 1 }, { 1, 1 } };
 
 private:
 	/*

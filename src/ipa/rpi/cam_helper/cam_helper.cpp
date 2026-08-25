@@ -206,8 +206,12 @@ unsigned int CamHelper::mistrustFramesModeSwitch() const
 
 unsigned int CamHelper::getMinDebinFactor() const
 {
-	/* Most cameras require debinning from 2x2 binning upwards. */
-	return 2;
+	return cfaLayout_.minimumDebinFactor();
+}
+
+void CamHelper::setCfaLayout(const libcamera::SensorCfaLayout &layout)
+{
+	cfaLayout_ = layout;
 }
 
 void CamHelper::parseEmbeddedData(Span<const uint8_t> buffer,

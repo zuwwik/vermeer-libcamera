@@ -26,6 +26,7 @@
 #include "libcamera/internal/bayer_format.h"
 #include "libcamera/internal/framebuffer.h"
 #include "libcamera/internal/software_isp/debayer_params.h"
+#include "libcamera/internal/software_isp/quad_bayer.h"
 
 #include "debayer_cpu.h"
 #if HAVE_DEBAYER_EGL
@@ -98,8 +99,9 @@ SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
 	}
 
 	const CameraManager &cm = *pipe->cameraManager();
+	const bool quadBayer = softwareIspNeedsCellCollapse(sensor->model());
 
-	auto stats = std::make_unique<SwStatsCpu>(cm);
+	auto stats = std::make_unique<SwStatsCpu>(cm, quadBayer);
 	if (!stats->isValid()) {
 		LOG(SoftwareIsp, Error) << "Failed to create SwStatsCpu object";
 		return;
@@ -121,7 +123,7 @@ SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
 
 	if (!softISPMode || softISPMode == "gpu") {
 		if (eGL::isAvailable()) {
-			debayer_ = std::make_unique<DebayerEGL>(std::move(stats), cm);
+			debayer_ = std::make_unique<DebayerEGL>(std::move(stats), cm, quadBayer);
 		} else {
 			LOG(SoftwareIsp, Info)
 				<< "EGL not available, falling back to CPU debayer";
@@ -129,6 +131,13 @@ SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
 	}
 
 #endif
+	if (!debayer_ && quadBayer) {
+		LOG(SoftwareIsp, Error)
+			<< "Quad Bayer sensor " << sensor->model()
+			<< " requires the EGL software ISP";
+		return;
+	}
+
 	if (!debayer_)
 		debayer_ = std::make_unique<DebayerCpu>(std::move(stats), cm);
 

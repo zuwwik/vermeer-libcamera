@@ -35,7 +35,7 @@ struct StreamConfiguration;
 class SwStatsCpu
 {
 public:
-	SwStatsCpu(const CameraManager &cm);
+	SwStatsCpu(const CameraManager &cm, bool quadBayer = false);
 	~SwStatsCpu() = default;
 
 	/*
@@ -98,11 +98,13 @@ private:
 	/* Bayer 10 bpp packed */
 	void statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats);
 	void statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats);
+	void statsQuadRGGB10P(const uint8_t *src[], SwIspStats &stats);
 	/* Bayer 12 bpp packed */
 	void statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats);
 	void statsGBRG12PLine0(const uint8_t *src[], SwIspStats &stats);
 
 	void processBayerFrame2(MappedFrameBuffer &in);
+	void processQuadBayerFrame(MappedFrameBuffer &in);
 
 	processFrameFn processFrame_;
 
@@ -120,6 +122,8 @@ private:
 	unsigned int xShift_;
 	unsigned int stride_;
 	unsigned int sumShift_;
+	bool quadBayer_;
+	BayerFormat::Order quadBayerOrder_ = BayerFormat::RGGB;
 
 	std::vector<SwIspStats> stats_;
 	SharedMemObject<SwIspStats> sharedStats_;

@@ -3,6 +3,7 @@
 libcamera_internal_headers += files([
     'benchmark.h',
     'debayer_params.h',
+    'quad_bayer.h',
     'software_isp.h',
     'swisp_stats.h',
     'swstats_cpu.h',

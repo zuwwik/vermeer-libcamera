@@ -51,6 +51,7 @@ public_tests = [
 
 internal_tests = [
     {'name': 'bayer-format', 'sources': ['bayer-format.cpp']},
+    {'name': 'quad-bayer', 'sources': ['quad-bayer.cpp']},
     {'name': 'byte-stream-buffer', 'sources': ['byte-stream-buffer.cpp']},
     {'name': 'camera-sensor', 'sources': ['camera-sensor.cpp']},
     {'name': 'delayed_controls', 'sources': ['delayed_controls.cpp']},

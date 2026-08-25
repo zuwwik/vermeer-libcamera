@@ -56,8 +56,8 @@ LOG_DEFINE_CATEGORY(Debayer)
  * \brief Construct a Debayer object
  * \param[in] cm The camera manager
  */
-Debayer::Debayer(const CameraManager &cm)
-	: bench_(cm, "Debayer")
+Debayer::Debayer(const CameraManager &cm, bool quadBayer)
+	: bench_(cm, "Debayer"), quadBayer_(quadBayer)
 {
 }
 

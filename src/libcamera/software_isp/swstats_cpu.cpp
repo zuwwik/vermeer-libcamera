@@ -17,6 +17,7 @@
 
 #include "libcamera/internal/bayer_format.h"
 #include "libcamera/internal/mapped_framebuffer.h"
+#include "libcamera/internal/software_isp/quad_bayer.h"
 
 namespace libcamera {
 
@@ -159,8 +160,8 @@ namespace libcamera {
 
 LOG_DEFINE_CATEGORY(SwStatsCpu)
 
-SwStatsCpu::SwStatsCpu(const CameraManager &cm)
-	: sharedStats_("softIsp_stats"), bench_(cm, "CPU stats")
+SwStatsCpu::SwStatsCpu(const CameraManager &cm, bool quadBayer)
+	: quadBayer_(quadBayer), sharedStats_("softIsp_stats"), bench_(cm, "CPU stats")
 {
 	if (!sharedStats_)
 		LOG(SwStatsCpu, Error)
@@ -323,6 +324,34 @@ void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats)
 	SWSTATS_FINISH_LINE_STATS()
 }
 
+void SwStatsCpu::statsQuadRGGB10P(const uint8_t *src[], SwIspStats &stats)
+{
+	const unsigned int widthInBytes = window_.width * 5 / 4;
+
+	SWSTATS_START_LINE_STATS(uint8_t)
+	(void)g2;
+
+	/* One logical RGGB tile occupies a 4x4 physical quad-cell block. */
+	for (unsigned int x = 0; x + 4 < widthInBytes; x += 10) {
+		auto rgb = normalizeQuadBayerTile(
+			[&](unsigned int cellX, unsigned int cellY) {
+				const unsigned int row = cellY * 2;
+				const unsigned int column = x + cellX * 2;
+				return static_cast<uint8_t>(
+					(src[row][column] + src[row][column + 1] +
+					 src[row + 1][column] + src[row + 1][column + 1]) /
+					4);
+			},
+			quadBayerOrder_);
+		r = rgb[0];
+		g = rgb[1];
+		b = rgb[2];
+		SWSTATS_ACCUMULATE_LINE_STATS(1)
+	}
+
+	SWSTATS_FINISH_LINE_STATS()
+}
+
 void SwStatsCpu::statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats)
 {
 	const uint8_t *src0 = src[1] + window_.x * 3 / 2;
@@ -473,6 +502,18 @@ int SwStatsCpu::configure(const StreamConfiguration &inputCfg, unsigned int stat
 	BayerFormat bayerFormat =
 		BayerFormat::fromPixelFormat(inputCfg.pixelFormat);
 
+	if (quadBayer_) {
+		if (!isQuadBayerInputFormatSupported(inputCfg.pixelFormat) ||
+		    !isQuadBayerInputSizeSupported(inputCfg.size))
+			return -EINVAL;
+		quadBayerOrder_ = bayerFormat.order;
+		patternSize_ = { 4, 4 };
+		xShift_ = 0;
+		sumShift_ = 0;
+		processFrame_ = &SwStatsCpu::processQuadBayerFrame;
+		return 0;
+	}
+
 	if (bayerFormat.packing == BayerFormat::Packing::None &&
 	    setupStandardBayerOrder(bayerFormat.order) == 0) {
 		processFrame_ = &SwStatsCpu::processBayerFrame2;
@@ -591,6 +632,19 @@ void SwStatsCpu::processBayerFrame2(MappedFrameBuffer &in)
 		linePointers[2] = src + stride_;
 		(this->*stats0_)(linePointers, stats_[0]);
 		src += stride_ * 2;
+	}
+}
+
+void SwStatsCpu::processQuadBayerFrame(MappedFrameBuffer &in)
+{
+	const uint8_t *src = in.planes()[0].data() + window_.y * stride_;
+	const uint8_t *rows[4];
+
+	for (unsigned int y = 0; y + 3 < window_.height; y += 8) {
+		for (unsigned int row = 0; row < 4; ++row)
+			rows[row] = src + row * stride_ + window_.x * 5 / 4;
+		statsQuadRGGB10P(rows, stats_[0]);
+		src += stride_ * 8;
 	}
 }
 

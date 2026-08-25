@@ -71,6 +71,26 @@ uniform vec3 blacklevel;
 uniform float gamma;
 uniform float contrastExp;
 
+#if defined (QUAD_BAYER)
+vec2 quad_cell(vec2 pixel)
+{
+	return clamp(floor(pixel / 2.0) * 2.0, vec2(0.0), tex_size - vec2(2.0));
+}
+
+float quad_fetch(vec2 pixel)
+{
+	vec2 cell = quad_cell(pixel);
+	vec2 byte_pos = vec2(floor(BPP * cell.x + 0.02), cell.y) * tex_step;
+	vec2 byte_pos_x1 = vec2(floor(BPP * (cell.x + 1.0) + 0.02), cell.y) * tex_step;
+	vec2 byte_pos_y1 = byte_pos + vec2(0.0, tex_step.y);
+	vec2 byte_pos_xy1 = vec2(byte_pos_x1.x, byte_pos_y1.y);
+	return (texture2D(tex_y, byte_pos).r +
+		texture2D(tex_y, byte_pos_x1).r +
+		texture2D(tex_y, byte_pos_y1).r +
+		texture2D(tex_y, byte_pos_xy1).r) * 0.25;
+}
+#endif
+
 float apply_contrast(float value)
 {
 	// Apply simple S-curve
@@ -108,6 +128,9 @@ void main(void)
 	 * by hand.
 	 */
 	center_pixel = floor(textureOut * tex_size);
+#if defined (QUAD_BAYER)
+	center_pixel = quad_cell(center_pixel);
+#endif
 	center_bytes.y = center_pixel.y;
 
 	/*
@@ -127,6 +150,10 @@ void main(void)
 	center_bytes.x = floor(center_bytes.x);
 	center_bytes *= tex_step;
 
+#if defined (QUAD_BAYER)
+	xcoords = center_pixel.x + vec2(-2.0, 2.0);
+	ycoords = center_pixel.y + vec2(-2.0, 2.0);
+#else
 	xcoords = center_bytes.x + vec2(-tex_step.x, tex_step.x);
 	ycoords = center_bytes.y + vec2(-tex_step.y, tex_step.y);
 
@@ -143,8 +170,12 @@ void main(void)
 	 * byte forward.
 	 */
 	xcoords[1] += (fract_x > THRESHOLD_H) ? tex_step.x : 0.0;
+#endif
 
-	vec2 alternate = mod(center_pixel.xy + tex_bayer_first_red, 2.0);
+	vec2 alternate = mod(center_pixel.xy / 2.0 + tex_bayer_first_red, 2.0);
+#if !defined (QUAD_BAYER)
+	alternate = mod(center_pixel.xy + tex_bayer_first_red, 2.0);
+#endif
 	bool even_col = alternate.x < 1.0;
 	bool even_row = alternate.y < 1.0;
 
@@ -199,17 +230,31 @@ void main(void)
 	 *   patterns.z = (A0 + A1 + B0 + B1) / 4.0
 	 *   patterns.w = (D0 + D1 + D2 + D3) / 4.0
 	 */
+#if defined (QUAD_BAYER)
+	#define fetch(x, y) quad_fetch(vec2(x, y))
+	float C = quad_fetch(center_pixel);
+#else
 	#define fetch(x, y) texture2D(tex_y, vec2(x, y)).r
-
 	float C = texture2D(tex_y, center_bytes).r;
+#endif
 	vec4 patterns = vec4(
+#if defined (QUAD_BAYER)
+		fetch(center_pixel.x, ycoords[0]),	/* A0: (0,-1) */
+		fetch(xcoords[0], center_pixel.y),	/* B0: (-1,0) */
+#else
 		fetch(center_bytes.x, ycoords[0]),	/* A0: (0,-1) */
 		fetch(xcoords[0], center_bytes.y),	/* B0: (-1,0) */
+#endif
 		fetch(xcoords[0], ycoords[0]),		/* D0: (-1,-1) */
 		fetch(xcoords[1], ycoords[0]));		/* D1: (1,-1) */
 	vec4 temp = vec4(
+#if defined (QUAD_BAYER)
+		fetch(center_pixel.x, ycoords[1]),	/* A1: (0,1) */
+		fetch(xcoords[1], center_pixel.y),	/* B1: (1,0) */
+#else
 		fetch(center_bytes.x, ycoords[1]),	/* A1: (0,1) */
 		fetch(xcoords[1], center_bytes.y),	/* B1: (1,0) */
+#endif
 		fetch(xcoords[1], ycoords[1]),		/* D3: (1,1) */
 		fetch(xcoords[0], ycoords[1]));		/* D2: (-1,1) */
 	patterns = (patterns + temp) * 0.5;

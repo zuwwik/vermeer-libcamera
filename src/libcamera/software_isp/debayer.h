@@ -35,7 +35,7 @@ LOG_DECLARE_CATEGORY(Debayer)
 class Debayer : public Object
 {
 public:
-	Debayer(const CameraManager &cm);
+	Debayer(const CameraManager &cm, bool quadBayer = false);
 	virtual ~Debayer() = 0;
 
 	virtual int configure(const StreamConfiguration &inputCfg,
@@ -81,6 +81,7 @@ public:
 	PixelFormat outputPixelFormat_;
 	bool swapRedBlueGains_;
 	Benchmark bench_;
+	bool quadBayer_;
 
 private:
 	virtual Size patternSize(PixelFormat inputFormat) = 0;
