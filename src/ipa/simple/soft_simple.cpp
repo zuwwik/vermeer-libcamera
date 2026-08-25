@@ -6,6 +6,7 @@
  */
 
 #include <chrono>
+#include <cmath>
 #include <stdint.h>
 #include <sys/mman.h>
 
@@ -228,10 +229,21 @@ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
 		context_.configuration.agc.againMin = camHelper_->gain(againMin);
 		context_.configuration.agc.againMax = camHelper_->gain(againMax);
 		context_.configuration.agc.again10 = std::max(context_.configuration.agc.againMin, 1.0);
-		context_.configuration.agc.againMinStep =
-			(context_.configuration.agc.againMax -
-			 context_.configuration.agc.againMin) /
-			100.0;
+		/*
+		 * The minimum gain step must reflect what the sensor can
+		 * actually resolve. Deriving it from a fraction of the gain
+		 * range yields a huge step for sensors with a wide range: the
+		 * OV01A10 spans 1-63.9961, giving 0.63 at unity gain where the
+		 * hardware resolves 1/256. The AGC can then make no correction
+		 * smaller than 63%, and oscillates around the target once the
+		 * exposure saturates and gain is the only remaining control.
+		 *
+		 * Sample the step at both ends of the range and take the
+		 * smaller one, so that non-uniform gain models are covered.
+		 */
+		context_.configuration.agc.againMinStep = std::min(
+			std::abs(camHelper_->gain(againMin + 1) - camHelper_->gain(againMin)),
+			std::abs(camHelper_->gain(againMax) - camHelper_->gain(againMax - 1)));
 		if (camHelper_->blackLevel().has_value()) {
 			/*
 			 * The black level from camHelper_ is a 16 bit value, software ISP
