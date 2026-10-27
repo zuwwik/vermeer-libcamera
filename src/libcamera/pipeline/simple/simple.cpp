@@ -205,7 +205,7 @@ class SimpleFrames
 public:
 	void create(Request *request, bool metadataRequested);
 	void destroy(uint32_t frame);
-	void clear();
+	std::vector<Request *> takeRequests();
 
 	SimpleFrameInfo *find(uint32_t frame);
 
@@ -225,9 +225,14 @@ void SimpleFrames::destroy(uint32_t frame)
 	frameInfo_.erase(frame);
 }
 
-void SimpleFrames::clear()
+std::vector<Request *> SimpleFrames::takeRequests()
 {
+	std::vector<Request *> requests;
+	requests.reserve(frameInfo_.size());
+	for (const auto &entry : frameInfo_)
+		requests.push_back(entry.second.request);
 	frameInfo_.clear();
+	return requests;
 }
 
 SimpleFrameInfo *SimpleFrames::find(uint32_t frame)
@@ -977,10 +982,17 @@ void SimpleCameraData::imageBufferReady(FrameBuffer *buffer)
 
 void SimpleCameraData::clearIncompleteRequests()
 {
-	while (!conversionQueue_.empty()) {
-		pipe()->cancelRequest(conversionQueue_.front().request);
+	while (!conversionQueue_.empty())
 		conversionQueue_.pop();
-	}
+
+	/*
+	 * Buffers already returned by the ISP can still be waiting for IPA
+	 * metadata. These requests are no longer in conversionQueue_. Take
+	 * every tracked request before cancelling, so callbacks cannot leave
+	 * dangling frame records or invalidate an iterator.
+	 */
+	for (Request *request : frameInfo_.takeRequests())
+		pipe()->cancelRequest(request);
 }
 
 void SimpleCameraData::tryCompleteRequest(Request *request)
@@ -1727,7 +1739,6 @@ void SimplePipelineHandler::stopDevice(Camera *camera)
 
 	video->bufferReady.disconnect(data, &SimpleCameraData::imageBufferReady);
 
-	data->frameInfo_.clear();
 	data->clearIncompleteRequests();
 	data->conversionBuffers_.clear();
 
