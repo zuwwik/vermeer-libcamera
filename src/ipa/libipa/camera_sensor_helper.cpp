@@ -378,6 +378,16 @@ static constexpr double expGainDb(double step)
 	return log2_10 * step / 20;
 }
 
+class CameraSensorHelperOv16a1q : public CameraSensorHelper
+{
+public:
+	CameraSensorHelperOv16a1q()
+	{
+		gain_ = AnalogueGainLinear{ 1, 0, 0, 256 };
+	}
+};
+REGISTER_CAMERA_SENSOR_HELPER("ov16a1q", CameraSensorHelperOv16a1q)
+
 class CameraSensorHelperAr0144 : public CameraSensorHelper
 {
 public:
