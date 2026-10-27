@@ -23,9 +23,6 @@ public:
 		     IPAFrameContext &frameContext,
 		     const SwIspStats *stats,
 		     ControlList &metadata) override;
-
-private:
-	void updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV);
 };
 
 } /* namespace ipa::soft::algorithms */
