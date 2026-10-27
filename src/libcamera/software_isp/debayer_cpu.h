@@ -22,6 +22,7 @@
 
 #include "libcamera/internal/bayer_format.h"
 #include "libcamera/internal/software_isp/debayer_params.h"
+#include "libcamera/internal/software_isp/packed_ccm.h"
 #include "libcamera/internal/software_isp/swstats_cpu.h"
 
 #include "debayer.h"
@@ -131,19 +132,15 @@ private:
 
 	static constexpr unsigned int kRGBLookupSize = 256;
 	static constexpr unsigned int kGammaLookupSize = 1024;
-	struct CcmColumn {
-		int16_t r;
-		int16_t g;
-		int16_t b;
-	};
 	using LookupTable = std::array<uint8_t, kRGBLookupSize>;
-	using CcmLookupTable = std::array<CcmColumn, kRGBLookupSize>;
+	using CcmLookupTable = std::array<uint64_t, kRGBLookupSize>;
 	LookupTable red_;
 	LookupTable green_;
 	LookupTable blue_;
-	CcmLookupTable redCcm_;
-	CcmLookupTable greenCcm_;
-	CcmLookupTable blueCcm_;
+	CcmLookupTable redCcm_{};
+	CcmLookupTable greenCcm_{};
+	CcmLookupTable blueCcm_{};
+	std::array<uint8_t, kCcmGammaSize> ccmGammaLut_{};
 	std::array<double, kGammaLookupSize> gammaTable_;
 	LookupTable gammaLut_;
 	bool ccmEnabled_;

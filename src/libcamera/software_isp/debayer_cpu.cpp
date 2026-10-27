@@ -133,12 +133,10 @@ DebayerCpu::~DebayerCpu() = default;
 
 #define STORE_PIXEL(b_, g_, r_)                         \
 	if constexpr (ccmEnabled) {                     \
-		const CcmColumn &blue = blueCcm_[b_];   \
-		const CcmColumn &green = greenCcm_[g_]; \
-		const CcmColumn &red = redCcm_[r_];     \
-		GAMMA(blue.b + green.b + red.b);        \
-		GAMMA(blue.g + green.g + red.g);        \
-		GAMMA(blue.r + green.r + red.r);        \
+		uint64_t sum = blueCcm_[b_] + greenCcm_[g_] + redCcm_[r_]; \
+		*dst++ = ccmGammaLut_[packedCcmIndex(sum, 0)]; \
+		*dst++ = ccmGammaLut_[packedCcmIndex(sum, 1)]; \
+		*dst++ = ccmGammaLut_[packedCcmIndex(sum, 2)]; \
 	} else {                                        \
 		*dst++ = blue_[b_];                     \
 		*dst++ = green_[g_];                    \
@@ -1030,17 +1028,23 @@ void DebayerCpu::updateLookupTables(const DebayerParams &params)
 			for (unsigned int i = 0; i < kRGBLookupSize; i++) {
 				const RGB<float> rgb = (gains * (RGB<float>(i) - blackIndex) * kRGBLookupSize / div)
 							       .clamp(0.0, kRGBLookupSize - 1);
-				red[i].r = std::round(rgb.r() * params.combinedMatrix[redIndex][0]);
-				red[i].g = std::round(rgb.r() * params.combinedMatrix[greenIndex][0]);
-				red[i].b = std::round(rgb.r() * params.combinedMatrix[blueIndex][0]);
-				green[i].r = std::round(rgb.g() * params.combinedMatrix[redIndex][1]);
-				green[i].g = std::round(rgb.g() * params.combinedMatrix[greenIndex][1]);
-				green[i].b = std::round(rgb.g() * params.combinedMatrix[blueIndex][1]);
-				blue[i].r = std::round(rgb.b() * params.combinedMatrix[redIndex][2]);
-				blue[i].g = std::round(rgb.b() * params.combinedMatrix[greenIndex][2]);
-				blue[i].b = std::round(rgb.b() * params.combinedMatrix[blueIndex][2]);
+				red[i] = packCcmColumn(
+					std::round(rgb.r() * params.combinedMatrix[redIndex][0]),
+					std::round(rgb.r() * params.combinedMatrix[greenIndex][0]),
+					std::round(rgb.r() * params.combinedMatrix[blueIndex][0]));
+				green[i] = packCcmColumn(
+					std::round(rgb.g() * params.combinedMatrix[redIndex][1]),
+					std::round(rgb.g() * params.combinedMatrix[greenIndex][1]),
+					std::round(rgb.g() * params.combinedMatrix[blueIndex][1]));
+				blue[i] = packCcmColumn(
+					std::round(rgb.b() * params.combinedMatrix[redIndex][2]),
+					std::round(rgb.b() * params.combinedMatrix[greenIndex][2]),
+					std::round(rgb.b() * params.combinedMatrix[blueIndex][2]));
 				gammaLut_[i] = gammaTable_[i * gammaTableSize / kRGBLookupSize];
 			}
+			std::fill(ccmGammaLut_.begin(), ccmGammaLut_.begin() + kCcmGammaOffset, gammaLut_.front());
+			std::copy(gammaLut_.begin(), gammaLut_.end(), ccmGammaLut_.begin() + kCcmGammaOffset);
+			std::fill(ccmGammaLut_.begin() + kCcmGammaOffset + kRGBLookupSize, ccmGammaLut_.end(), gammaLut_.back());
 		}
 	} else {
 		if (gammaUpdateNeeded || params.gains != params_.gains) {
