@@ -383,10 +383,24 @@ class CameraSensorHelperOv16a1q : public CameraSensorHelper
 public:
 	CameraSensorHelperOv16a1q()
 	{
+		/* Vermeer Android sensor metadata: 64 DN at RAW10. */
+		blackLevel_ = 4096;
 		gain_ = AnalogueGainLinear{ 1, 0, 0, 256 };
 	}
 };
 REGISTER_CAMERA_SENSOR_HELPER("ov16a1q", CameraSensorHelperOv16a1q)
+
+class CameraSensorHelperOvx8000 : public CameraSensorHelper
+{
+public:
+	CameraSensorHelperOvx8000()
+	{
+		/* Vermeer Android sensor metadata: 64 DN at RAW10. */
+		blackLevel_ = 4096;
+		gain_ = AnalogueGainLinear{ 1, 0, 0, 256 };
+	}
+};
+REGISTER_CAMERA_SENSOR_HELPER("ovx8000", CameraSensorHelperOvx8000)
 
 class CameraSensorHelperAr0144 : public CameraSensorHelper
 {
