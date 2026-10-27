@@ -178,12 +178,19 @@ static constexpr unsigned int kBlueYMul = 29; /* 0.114 * 256 */
                                           \
 	uint64_t sumR = 0;                \
 	uint64_t sumG = 0;                \
-	uint64_t sumB = 0;
+	uint64_t sumB = 0; \
+	int32_t previousGreen = -1;
 
 #define SWSTATS_ACCUMULATE_LINE_STATS(div) \
 	sumR += r;                         \
 	sumG += g;                         \
 	sumB += b;                         \
+	if (previousGreen >= 0) {          \
+		int64_t delta = int32_t(g) - previousGreen; \
+		stats.focusGradient += delta * delta; \
+		stats.focusEnergy += uint64_t(g) * g; \
+	}                                  \
+	previousGreen = g;                  \
                                            \
 	yVal = r * kRedYMul;               \
 	yVal += g * kGreenYMul;            \
@@ -421,6 +428,7 @@ void SwStatsCpu::startFrame(uint32_t frame)
 	for (auto &s : stats_) {
 		s.sum_ = RGB<uint64_t>({ 0, 0, 0 });
 		s.yHistogram.fill(0);
+		s.focusGradient = s.focusEnergy = 0;
 	}
 }
 
@@ -438,8 +446,11 @@ void SwStatsCpu::finishFrame(uint32_t frame, uint32_t bufferId)
 	if (valid) {
 		sharedStats_->sum_ = RGB<uint64_t>({ 0, 0, 0 });
 		sharedStats_->yHistogram.fill(0);
+		sharedStats_->focusGradient = sharedStats_->focusEnergy = 0;
 		for (const auto &s : stats_) {
 			sharedStats_->sum_ += s.sum_;
+			sharedStats_->focusGradient += s.focusGradient;
+			sharedStats_->focusEnergy += s.focusEnergy;
 			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++)
 				sharedStats_->yHistogram[j] += s.yHistogram[j];
 		}

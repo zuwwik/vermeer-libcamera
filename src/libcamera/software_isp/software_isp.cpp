@@ -24,6 +24,7 @@
 #include <libcamera/stream.h>
 
 #include "libcamera/internal/bayer_format.h"
+#include "libcamera/internal/camera_lens.h"
 #include "libcamera/internal/framebuffer.h"
 #include "libcamera/internal/software_isp/debayer_params.h"
 #include "libcamera/internal/software_isp/quad_bayer.h"
@@ -80,7 +81,7 @@ LOG_DEFINE_CATEGORY(SoftwareIsp)
  * \param[out] ipaControls The IPA controls to update
  * handler
  */
-SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
+SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, CameraSensor *sensor,
 			 ControlInfoMap *ipaControls)
 	: ispWorkerThread_("SWIspWorker"),
 	  dmaHeap_(DmaBufAllocator::DmaBufAllocatorFlag::CmaHeap |
@@ -171,6 +172,7 @@ SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
 			 sharedParams_.fd(),
 			 sensorInfo,
 			 sensor->controls(),
+			 sensor->focusLens() ? sensor->focusLens()->controls() : ControlInfoMap{},
 			 ipaControls,
 			 &ccmEnabled_);
 	if (ret) {
@@ -185,8 +187,16 @@ SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
 					    metadataReady.emit(frame, metadata);
 				    });
 	ipa_->setSensorControls.connect(this, &SoftwareIsp::setSensorCtrls);
+	ipa_->setLensPosition.connect(this, [this](int32_t position) {
+		setLensPosition.emit(position);
+	});
 
 	debayer_->moveToThread(&ispWorkerThread_);
+}
+
+void SoftwareIsp::lensPositionFailed()
+{
+	ipa_->lensPositionFailed();
 }
 
 SoftwareIsp::~SoftwareIsp()

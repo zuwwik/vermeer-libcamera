@@ -57,6 +57,7 @@ public:
 		 const SharedFD &fdParams,
 		 const IPACameraSensorInfo &sensorInfo,
 		 const ControlInfoMap &sensorControls,
+		 const ControlInfoMap &lensControls,
 		 ControlInfoMap *ipaControls,
 		 bool *ccmEnabled) override;
 	int configure(const IPAConfigInfo &configInfo) override;
@@ -64,6 +65,7 @@ public:
 	int start() override;
 	void stop() override;
 
+	void lensPositionFailed() override { context_.lensFailure = true; }
 	void queueRequest(const uint32_t frame, const ControlList &controls) override;
 	void computeParams(const uint32_t frame) override;
 	void processStats(const uint32_t frame, const uint32_t bufferId,
@@ -97,6 +99,7 @@ int IPASoftSimple::init(const IPASettings &settings,
 			const SharedFD &fdParams,
 			const IPACameraSensorInfo &sensorInfo,
 			const ControlInfoMap &sensorControls,
+		 const ControlInfoMap &lensControls,
 			ControlInfoMap *ipaControls,
 			bool *ccmEnabled)
 {
@@ -108,6 +111,7 @@ int IPASoftSimple::init(const IPASettings &settings,
 	}
 
 	context_.sensorInfo = sensorInfo;
+	context_.lensControls = lensControls;
 
 	/* Load the tuning data file */
 	File file(settings.configurationFile);
@@ -203,6 +207,7 @@ int IPASoftSimple::init(const IPASettings &settings,
 int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
 {
 	sensorInfoMap_ = configInfo.sensorControls;
+	context_.sensorInfo = configInfo.sensorInfo;
 
 	const ControlInfo &exposureInfo = sensorInfoMap_.find(V4L2_CID_EXPOSURE)->second;
 	const ControlInfo &gainInfo = sensorInfoMap_.find(V4L2_CID_ANALOGUE_GAIN)->second;
@@ -211,6 +216,8 @@ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
 	context_.configuration = {};
 	context_.activeState = {};
 	context_.frameContexts.clear();
+	context_.lensPosition.reset();
+	context_.lensFailure = false;
 
 	context_.configuration.agc.lineDuration =
 		context_.sensorInfo.minLineLength * 1.0s / context_.sensorInfo.pixelRate;
@@ -322,6 +329,10 @@ void IPASoftSimple::processStats(const uint32_t frame,
 	for (const auto &algo : algorithms())
 		algo->process(context_, frame, frameContext, stats_, metadata);
 	metadataReady.emit(frame, metadata);
+	if (context_.lensPosition) {
+		setLensPosition.emit(*context_.lensPosition);
+		context_.lensPosition.reset();
+	}
 
 	/* Sanity check */
 	if (!sensorControls.contains(V4L2_CID_EXPOSURE) ||

@@ -90,6 +90,9 @@ struct IPAContext {
 	FCQueue<IPAFrameContext> frameContexts;
 	ControlInfoMap::Map ctrlMap;
 	bool ccmEnabled = false;
+	ControlInfoMap lensControls;
+	std::optional<int32_t> lensPosition;
+	bool lensFailure = false;
 };
 
 } /* namespace ipa::soft */

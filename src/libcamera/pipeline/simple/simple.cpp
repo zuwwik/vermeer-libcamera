@@ -34,6 +34,7 @@
 
 #include "libcamera/internal/camera.h"
 #include "libcamera/internal/camera_manager.h"
+#include "libcamera/internal/camera_lens.h"
 #include "libcamera/internal/camera_sensor.h"
 #include "libcamera/internal/camera_sensor_properties.h"
 #include "libcamera/internal/converter.h"
@@ -631,6 +632,13 @@ int SimpleCameraData::init()
 			swIsp_->ispStatsReady.connect(this, &SimpleCameraData::ispStatsReady);
 			swIsp_->metadataReady.connect(this, &SimpleCameraData::metadataReady);
 			swIsp_->setSensorControls.connect(this, &SimpleCameraData::setSensorControls);
+			swIsp_->setLensPosition.connect(this, [this](int32_t position) {
+				CameraLens *lens = sensor_->focusLens();
+				if (!lens || lens->setFocusPosition(position)) {
+					LOG(SimplePipeline, Error) << "Lens position write failed: " << position;
+					swIsp_->lensPositionFailed();
+				}
+			});
 		}
 	}
 
@@ -1615,7 +1623,42 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
 	if (data->converter_) {
 		return data->converter_->configure(inputCfg, outputCfgs);
 	} else {
+		/*
+		 * Software output can be slower than a sensor's native binned mode.
+		 * An explicit frame_rate setting caps the sensor before configuring
+		 * AGC, giving it the full requested integration time. RAW-only
+		 * sessions retain the sensor's native timing.
+		 */
+		const auto &global = cameraManager()->_d()->configuration();
+		auto frameRate = global.option<unsigned int>({ "software_isp", "frame_rate" });
+		if (frameRate && *frameRate) {
+			IPACameraSensorInfo sensorInfo{};
+			ret = data->sensor_->sensorInfo(&sensorInfo);
+			if (ret)
+				return ret;
+			const ControlInfoMap &sensorControls = data->sensor_->controls();
+			auto vblank = sensorControls.find(V4L2_CID_VBLANK);
+			if (vblank != sensorControls.end() && sensorInfo.minLineLength &&
+			    sensorInfo.pixelRate) {
+				uint64_t divisor = uint64_t(sensorInfo.minLineLength) * *frameRate;
+				uint64_t frameLines = (sensorInfo.pixelRate + divisor - 1) / divisor;
+				int64_t blank = int64_t(frameLines) - sensorInfo.outputSize.height;
+				int32_t lines = std::clamp<int64_t>(blank,
+					vblank->second.min().get<int32_t>(),
+					vblank->second.max().get<int32_t>());
+				ControlList timing(sensorControls);
+				timing.set(V4L2_CID_VBLANK, lines);
+				ret = data->sensor_->setControls(&timing);
+				if (ret)
+					return ret;
+				/* The VBLANK write may have extended exposure's range. */
+				data->sensor_->device()->updateControlInfo();
+			}
+		}
 		ipa::soft::IPAConfigInfo configInfo;
+		ret = data->sensor_->sensorInfo(&configInfo.sensorInfo);
+		if (ret)
+			return ret;
 		configInfo.sensorControls = data->sensor_->controls();
 		return data->swIsp_->configure(inputCfg, outputCfgs, configInfo);
 	}
