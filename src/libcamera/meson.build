@@ -13,6 +13,7 @@ libcamera_public_sources = files([
     'pixel_format.cpp',
     'request.cpp',
     'stream.cpp',
+    'still_image.cpp',
     'transform.cpp',
 ])
 
