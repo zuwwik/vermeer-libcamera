@@ -49,6 +49,8 @@
 #include "libcamera/internal/v4l2_subdevice.h"
 #include "libcamera/internal/v4l2_videodevice.h"
 
+#include "preview_size.h"
+
 namespace libcamera {
 
 LOG_DEFINE_CATEGORY(SimplePipeline)
@@ -1497,6 +1499,14 @@ SimplePipelineHandler::generateConfiguration(Camera *camera, Span<const StreamRo
 	setUpFormatSizes(processedFormats);
 	setUpFormatSizes(rawFormats);
 
+	const auto &global = cameraManager()->_d()->configuration();
+	const unsigned int previewMaxPixels = global.option<unsigned int>(
+		{ "software_isp", "preview_max_pixels" }).value_or(0);
+	const bool livePreview = std::any_of(roles.begin(), roles.end(), [](StreamRole role) {
+		return role == StreamRole::Viewfinder || role == StreamRole::VideoRecording;
+	});
+	const bool stillCapture = std::find(roles.begin(), roles.end(), StreamRole::StillCapture) != roles.end();
+
 	/*
 	 * Create the stream configurations. Take the first entry in the formats
 	 * map as the default, for lack of a better option.
@@ -1508,6 +1518,20 @@ SimplePipelineHandler::generateConfiguration(Camera *camera, Span<const StreamRo
 		StreamConfiguration cfg{ StreamFormats{ formats } };
 		cfg.pixelFormat = formats.begin()->first;
 		cfg.size = formats.begin()->second[0].max;
+
+		if (previewMaxPixels && livePreview && !stillCapture) {
+			std::vector<Size> sizes;
+			for (const auto &pipe : data->configs_) {
+				if (role == StreamRole::Raw) {
+					if (pipe.captureFormat == cfg.pixelFormat)
+						sizes.push_back(pipe.captureSize);
+				} else if (std::find(pipe.outputFormats.begin(), pipe.outputFormats.end(),
+						     cfg.pixelFormat) != pipe.outputFormats.end()) {
+					sizes.push_back(pipe.outputSizes.max);
+				}
+			}
+			cfg.size = simplePreviewSize(sizes, cfg.size, previewMaxPixels);
+		}
 
 		config->addConfiguration(cfg);
 	}
