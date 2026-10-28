@@ -128,7 +128,13 @@ int V4L2Device::setFd(UniqueFD fd)
 	fdEventNotifier_->activated.connect(this, &V4L2Device::eventAvailable);
 	fdEventNotifier_->setEnabled(false);
 
-	listControls();
+	/* Keep ControlId pointers and the id map stable across close/open cycles.
+	 * IPA configuration may still refer to the cached control information.
+	 */
+	if (controlIds_.empty())
+		listControls();
+	else
+		updateControlInfo();
 
 	return 0;
 }

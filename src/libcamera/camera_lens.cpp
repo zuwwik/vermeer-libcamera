@@ -77,6 +77,31 @@ int CameraLens::init()
 }
 
 /**
+ * \brief Open or close the lens device for an active capture session
+ * \param[in] active True to open the device, false to release it
+ *
+ * Some lens drivers power the actuator while their subdevice node is open.
+ * Pipeline handlers may close it between captures; cached controls and model
+ * information remain available. No lens writes may be pending when closing.
+ *
+ * \return 0 on success or a negative error code otherwise
+ */
+int CameraLens::setActive(bool active)
+{
+	if (!active) {
+		subdev_->close();
+		return 0;
+	}
+	if (subdev_->isOpen())
+		return 0;
+
+	int ret = subdev_->open();
+	if (ret)
+		subdev_->close();
+	return ret;
+}
+
+/**
  * \brief This function sets the focal point of the lens to a specific position.
  * \param[in] position The focal point of the lens
  *

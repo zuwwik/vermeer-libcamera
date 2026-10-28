@@ -364,6 +364,7 @@ public:
 	};
 	std::queue<RequestOutputs> conversionQueue_;
 	bool useConversion_;
+	bool lensActive_ = false;
 
 	std::unique_ptr<Converter> converter_;
 	std::unique_ptr<SoftwareIsp> swIsp_;
@@ -573,6 +574,10 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
 	if (!sensor_)
 		return;
 
+	/* Enumeration must not keep the focus actuator powered. */
+	if (CameraLens *lens = sensor_->focusLens())
+		lens->setActive(false);
+
 	const CameraSensorProperties::SensorDelays &delays = sensor_->sensorDelays();
 	std::unordered_map<uint32_t, DelayedControls::ControlParams> params = {
 		{ V4L2_CID_ANALOGUE_GAIN, { delays.gainDelay, false } },
@@ -635,6 +640,8 @@ int SimpleCameraData::init()
 			swIsp_->metadataReady.connect(this, &SimpleCameraData::metadataReady);
 			swIsp_->setSensorControls.connect(this, &SimpleCameraData::setSensorControls);
 			swIsp_->setLensPosition.connect(this, [this](int32_t position) {
+				if (!lensActive_)
+					return;
 				CameraLens *lens = sensor_->focusLens();
 				if (!lens || lens->setFocusPosition(position)) {
 					LOG(SimplePipeline, Error) << "Lens position write failed: " << position;
@@ -1743,6 +1750,15 @@ int SimplePipelineHandler::start(Camera *camera, [[maybe_unused]] const ControlL
 
 	video->bufferReady.connect(data, &SimpleCameraData::imageBufferReady);
 
+	if (CameraLens *lens = data->sensor_->focusLens()) {
+		ret = lens->setActive(true);
+		if (ret) {
+			stop(camera);
+			return ret;
+		}
+	}
+	data->lensActive_ = true;
+
 	data->delayedCtrls_->reset();
 	if (frameStartEmitter) {
 		ret = frameStartEmitter->setFrameStartEnabled(true);
@@ -1788,6 +1804,7 @@ void SimplePipelineHandler::stopDevice(Camera *camera)
 	V4L2VideoDevice *video = data->video_;
 	V4L2Subdevice *frameStartEmitter = data->frameStartEmitter_;
 
+	data->lensActive_ = false;
 	if (frameStartEmitter) {
 		frameStartEmitter->setFrameStartEnabled(false);
 		frameStartEmitter->frameStart.disconnect(data->delayedCtrls_.get(),
@@ -1808,6 +1825,9 @@ void SimplePipelineHandler::stopDevice(Camera *camera)
 
 	data->clearIncompleteRequests();
 	data->conversionBuffers_.clear();
+
+	if (CameraLens *lens = data->sensor_->focusLens())
+		lens->setActive(false);
 
 	releasePipeline(data);
 }
