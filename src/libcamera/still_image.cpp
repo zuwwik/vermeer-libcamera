@@ -143,8 +143,13 @@ int StillImageProcessor::processRaw10(const uint8_t *data, size_t length,
 		for (unsigned c = 0; c < 3; c++)
 			for (unsigned value = 0; value < 1024; value++)
 				for (unsigned out = 0; out < 3; out++)
-					columns[c][value][out] = std::max(float(value) - p.blackLevel, 0.f) /
-						(p.whiteLevel - p.blackLevel) * p.whiteBalance[c] * p.colorMatrix[out * 3 + c];
+					/* Match the live ISP: clip white-balanced sensor channels
+					 * before mixing them through the CCM. Out-of-range R/B
+					 * otherwise turn clipped white into magenta in stills.
+					 */
+					columns[c][value][out] = std::clamp(
+						(float(value) - p.blackLevel) / (p.whiteLevel - p.blackLevel) *
+						p.whiteBalance[c], 0.f, 1.f) * p.colorMatrix[out * 3 + c];
 		std::array<uint8_t, 4096> gamma;
 		std::array<float, 4097> highlights;
 		const float contrast = std::tan(std::min(p.contrast * float(M_PI_4), float(M_PI_2) - .00001f));
